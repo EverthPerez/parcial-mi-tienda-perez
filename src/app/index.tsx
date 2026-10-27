@@ -1,20 +1,35 @@
 import { useAuth } from '@/context/AuthContext';
 import { productsRepo } from '@/db/repositories/products';
 import { isPending, useProducts } from '@/hooks/useProducts';
+import { syncProducts } from '@/services/sync';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const money = (n: number) => '$ ' + n.toLocaleString('es-CO');
 
 export default function Principal() {
-  const { signOut } = useAuth();
+  const { session, signOut } = useAuth();
   const { products, totalUnits, totalValue, pendingCount } = useProducts();
   const [message, setMessage] = useState('');
+  const [isError, setIsError] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  function handleSync() {
-    setMessage('La sincronización se agrega en el Bloque 3');
+  async function handleSync() {
+    if (!session) return;
+    setSyncing(true);
+    setMessage('');
+    try {
+      const result = await syncProducts(session.user.id);
+      setIsError(false);
+      setMessage(`${result.uploaded} subidos, ${result.downloaded} bajados`);
+    } catch (e: any) {
+      setIsError(true);
+      setMessage('No se pudo sincronizar: ' + (e?.message ?? 'revisa tu conexión'));
+    } finally {
+      setSyncing(false);
+    }
   }
 
   function confirmDelete(id: number, name: string) {
@@ -40,8 +55,12 @@ export default function Principal() {
       </View>
 
       <View style={styles.actions}>
-        <Pressable style={[styles.button, { backgroundColor: '#2563eb' }]} onPress={handleSync}>
-          <Text style={styles.buttonText}>Sincronizar</Text>
+        <Pressable
+          style={[styles.button, { backgroundColor: '#2563eb' }]}
+          onPress={handleSync}
+          disabled={syncing}
+        >
+          {syncing ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sincronizar</Text>}
         </Pressable>
         <Pressable
           style={[styles.button, { backgroundColor: '#16a34a' }]}
@@ -51,7 +70,9 @@ export default function Principal() {
         </Pressable>
       </View>
 
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      {message ? (
+        <Text style={[styles.message, { color: isError ? '#c00' : '#15803d' }]}>{message}</Text>
+      ) : null}
 
       <FlatList
         data={products}
@@ -89,9 +110,9 @@ const styles = StyleSheet.create({
   totals: { backgroundColor: '#f1f5f9', borderRadius: 10, padding: 12, gap: 4 },
   totalText: { fontSize: 15 },
   actions: { flexDirection: 'row', gap: 10, marginVertical: 12 },
-  button: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center' },
+  button: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   buttonText: { color: '#fff', fontWeight: 'bold' },
-  message: { textAlign: 'center', marginBottom: 8, color: '#334155' },
+  message: { textAlign: 'center', marginBottom: 8, fontWeight: 'bold' },
   empty: { textAlign: 'center', marginTop: 32, color: '#64748b' },
   item: {
     flexDirection: 'row',
